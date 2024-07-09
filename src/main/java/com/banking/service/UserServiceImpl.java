@@ -20,6 +20,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     EmailService emailService;
+
+    @Autowired
+    TransactionService transactionService;
     @Override
     public BankResponse createAccount(UserRequest userRequest) {
         /**
@@ -118,9 +121,15 @@ public class UserServiceImpl implements UserService {
 
         repo.save(userCredit);
 
+    //save transaction
+        TransactionDto transactionDto = TransactionDto.builder()
+                .accountNumber(userCredit.getAccountNumber())
+                .transactionType("CREDIT")
+                .amount(request.getAmount())
+                .build();
+transactionService.saveTransaction(transactionDto);
 
-
-       return BankResponse.builder()
+return BankResponse.builder()
                .responseCode(AccountUtils.ACCOUNT_CREDITED_SUCCESS)
                .responseMessage(AccountUtils.ACCOUNT_CREDITED_SUCCESS_MESSAGE)
                .accountInfo(AccountInfo.builder()
@@ -159,9 +168,16 @@ public class UserServiceImpl implements UserService {
                     .accountInfo(null)
                     .build();
         }
+
         else {
             userDebit.setAccountBalance(userDebit.getAccountBalance().subtract(request.getAmount()));
             repo.save(userDebit);
+            TransactionDto transactionDto = TransactionDto.builder()
+                    .accountNumber(userDebit.getAccountNumber())
+                    .transactionType("DEBIT")
+                    .amount(request.getAmount())
+                    .build();
+            transactionService.saveTransaction(transactionDto);
             return BankResponse.builder().
              responseCode(AccountUtils.ACCOUNT_DEBITED_SUCCESS)
                     .responseMessage(AccountUtils.ACCOUNT_DEBITED_MESSAGE)
@@ -175,5 +191,59 @@ public class UserServiceImpl implements UserService {
             .build();
         }
 
+    }
+
+    @Override
+    public BankResponse transfer(TransferRequest request) {
+        boolean isDestinationAccountExist = repo.existsByAccountNumber(request.getDestinationAccountNumber());
+       if(!isDestinationAccountExist){
+           return BankResponse.builder()
+                   .responseCode(AccountUtils.ACCOUNT_NOT_EXIST_CODE)
+                   .responseMessage(AccountUtils.ACCOUNT_NOT_EXIST_MESSAGE)
+                   .accountInfo(null)
+                   .build();
+       }
+       User sourceAccount = repo.findByAccountNumber(request.getSourceAccountNumber());
+       if(request.getAmount().compareTo(sourceAccount.getAccountBalance())>0){
+           return BankResponse.builder()
+                   .responseCode(AccountUtils.INSUFFICIENT_BALANCE_CODE)
+                   .responseMessage(AccountUtils.INSUFFICIENT_BALANCE_MESSAGE)
+                   .accountInfo(null)
+                   .build();
+       }
+       sourceAccount.setAccountBalance(sourceAccount.getAccountBalance().subtract(request.getAmount()));
+
+       String sourceUserName = sourceAccount.getFirstName() + sourceAccount.getLastName();
+
+       repo.save(sourceAccount);
+       EmailDetails debitAlert = EmailDetails.builder()
+               .subject("DEBIT ALERT")
+               .recipient(sourceAccount.getEmail())
+               .messageBody("The Sum of " + request.getSourceAccountNumber() + " "+"has been deducted from your account! Your Current balance is "+ " "+sourceAccount.getAccountBalance())
+               .build();
+      emailService.sendEmailAlert(debitAlert);
+       User destinationAccount= repo.findByAccountNumber(request.getDestinationAccountNumber());
+       destinationAccount.setAccountBalance(destinationAccount.getAccountBalance().add(request.getAmount()));
+//       String recipient  = destinationAccount.getFirstName() + destinationAccount.getLastName();
+       repo.save(destinationAccount);
+       EmailDetails creditAlert = EmailDetails.builder()
+                .subject("CREDIT ALERT")
+                .recipient(sourceAccount.getEmail())
+                .messageBody("The Sum of " +" "+ request.getAmount() + "has been sent to your account from " + " " + sourceUserName +" Your Current balance is "+ " " + sourceAccount.getAccountBalance())
+                .build();
+        emailService.sendEmailAlert(creditAlert);
+
+        TransactionDto transactionDto = TransactionDto.builder()
+                .accountNumber(destinationAccount.getAccountNumber())
+                .transactionType("DEBIT")
+                .amount(request.getAmount())
+                .build();
+        transactionService.saveTransaction(transactionDto);
+      return BankResponse.builder()
+              .responseCode(AccountUtils.TRANSFER_SUCCESSFUL_CODE)
+              .responseMessage(AccountUtils.TRANSFER_SUCCESSFUL_MESSAGE)
+              .accountInfo(null)
+
+              .build();
     }
 }

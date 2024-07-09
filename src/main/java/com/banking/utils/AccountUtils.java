@@ -26,6 +26,8 @@ public class AccountUtils {
 
     public static final String ACCOUNT_DEBITED_SUCCESS ="007";
     public static final String ACCOUNT_DEBITED_MESSAGE="User Account Debited Successfully";
+  public static final String TRANSFER_SUCCESSFUL_CODE ="008";
+  public static final String TRANSFER_SUCCESSFUL_MESSAGE="Transfer Successful";
 
     public static String generateAccountNumber(){
        Year currentYear = Year.now();
