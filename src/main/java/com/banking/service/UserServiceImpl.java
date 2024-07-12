@@ -1,10 +1,17 @@
 package com.banking.service;
 
+import com.banking.config.JwtTokenProvider;
 import com.banking.dto.*;
+import com.banking.entity.Role;
 import com.banking.entity.User;
 import com.banking.repository.UserRepository;
 import com.banking.utils.AccountUtils;
+import jakarta.validation.constraints.Email;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import javax.accessibility.AccessibleComponent;
@@ -23,6 +30,15 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     TransactionService transactionService;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
+
+    @Autowired
+    AuthenticationManager authenticationManager;
+
+    @Autowired
+    JwtTokenProvider jwtTokenProvider;
     @Override
     public BankResponse createAccount(UserRequest userRequest) {
         /**
@@ -49,6 +65,8 @@ public class UserServiceImpl implements UserService {
                 .stateOfOrigin(userRequest.getStateOfOrigin())
                 .accountNumber(AccountUtils.generateAccountNumber())
                 .email(userRequest.getEmail())
+                .password(passwordEncoder.encode(userRequest.getPassword()))
+                .role(Role.valueOf("ROLE_ADMIN"))
                 .status("ACTIVE")
                 .accountBalance(BigDecimal.ZERO)
                 .build();
@@ -72,6 +90,25 @@ public class UserServiceImpl implements UserService {
 
 
     }
+
+    public BankResponse login(LoginDto loginDto){
+        Authentication authentication = null;
+        authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(loginDto.getEmail(), loginDto.getPassword())
+        );
+
+        EmailDetails loginAlert = EmailDetails.builder()
+                .subject("You're logged in!")
+                .recipient(loginDto.getEmail())
+                .messageBody("You logged into your account. If you did not initiate this request, please contact your bank")
+                .build();
+        emailService.sendEmailAlert(loginAlert);
+        return BankResponse.builder()
+                .responseCode("Login Success")
+                .responseMessage(jwtTokenProvider.generateToken(authentication))
+                .build();
+    }
+
 
     @Override
     public BankResponse balanceEnquiry(EnquiryRequest request) {
@@ -245,5 +282,10 @@ return BankResponse.builder()
               .accountInfo(null)
 
               .build();
+    }
+
+    public static void main(String[] args){
+        UserServiceImpl userService = new UserServiceImpl();
+        System.out.println(userService.passwordEncoder.encode("1234"));
     }
 }
